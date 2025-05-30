@@ -1,15 +1,15 @@
 entrypoint = "main.py"
+run = ["uv", "run", "streamlit", "run", "src/app.py"]
 modules = ["python-3.11"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["unzipNLS", "yakut"]
 
-[unitTest]
-language = "python3"
+[[ports]]
+localPort = 8501
+externalPort = 80
 
-[gitHubImport]
-requiredFiles = [".replit", "replit.nix"]
-
-[deployment]
-run = ["python3", "main.py"]
-deploymentTarget = "cloudrun"
+[[ports]]
+localPort = 8502
+externalPort = 3000

@@ -1,0 +1,11 @@
+[theme]
+#base = "dark"
+
+[logger]
+level = "debug"
+
+[client]
+showErrorDetails = "full"
+
+#[server]
+#enableStaticServing = true
