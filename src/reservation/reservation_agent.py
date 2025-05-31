@@ -35,8 +35,7 @@ application_template = """
 def modify_input_schema(input_schema):
     if "properties" in input_schema:
         if "required" not in input_schema or not isinstance(
-            input_schema["required"], list
-        ):
+                input_schema["required"], list):
             input_schema["required"] = list(input_schema["properties"].keys())
         else:
             for key in input_schema["properties"].keys():
@@ -75,15 +74,16 @@ class ReservationAgent:
     async def connect_sse_server(self):
         try:
             streams = await self.exit_stack.enter_async_context(
-                streamablehttp_client(url)
-            )
+                streamablehttp_client(url))
             self.session = await self.exit_stack.enter_async_context(
-                ClientSession(*streams)
-            )
+                ClientSession(*streams))
             # ──────────── 몽키 패치 구간 ──────────
-            if callable(getattr(self.session, "_session_read_timeout_seconds", None)):
+            if callable(
+                    getattr(self.session, "_session_read_timeout_seconds",
+                            None)):
                 # 필요하면 원하는 시간으로 수정 (예: 10초)
-                self.session._session_read_timeout_seconds = timedelta(seconds=10)
+                self.session._session_read_timeout_seconds = timedelta(
+                    seconds=10)
             # ───────────────────────────────────────
             await self.session.initialize()
             print("MCP 서버 연결 완료")
@@ -93,8 +93,7 @@ class ReservationAgent:
                     "name": tool.name,
                     "description": tool.description,
                     "input_schema": modify_input_schema(tool.inputSchema),
-                }
-                for tool in mcp_tools.tools
+                } for tool in mcp_tools.tools
             ] + [report_reservation]
             print(f"도구 목록: {[tool['name'] for tool in self.tools]}")
 
@@ -105,9 +104,8 @@ class ReservationAgent:
 
     async def _polling_result(self, tool_name, tool_args, tool_result):
         for _ in range(1, 10):
-            message = json.loads(tool_result.model_dump()["content"][0]["text"])[
-                "messages"
-            ]
+            message = json.loads(
+                tool_result.model_dump()["content"][0]["text"])["messages"]
             if len(message) >= 1:
                 return tool_result
             await asyncio.sleep(1)
@@ -118,9 +116,8 @@ class ReservationAgent:
         response = self._call_llm(messages)
         tries = 0
         while True:
-            tool_content = next(
-                content for content in response.content if content.type == "tool_use"
-            )
+            tool_content = next(content for content in response.content
+                                if content.type == "tool_use")
             tool_name, tool_args = tool_content.name, tool_content.input
             print("call_tool", tool_name, tool_args)
 
@@ -132,25 +129,24 @@ class ReservationAgent:
 
             if tool_name == "slack_get_thread_replies":
                 tool_result = await self._polling_result(
-                    tool_name, tool_args, tool_result
-                )
+                    tool_name, tool_args, tool_result)
 
             print(tool_result)
-            messages.extend(
-                [
-                    {"role": "assistant", "content": response.content},
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": tool_content.id,
-                                "content": str(tool_result),
-                            }
-                        ],
-                    },
-                ]
-            )
+            messages.extend([
+                {
+                    "role": "assistant",
+                    "content": response.content
+                },
+                {
+                    "role":
+                    "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_content.id,
+                        "content": str(tool_result),
+                    }],
+                },
+            ])
             response = self._call_llm(messages)
             if tries > 10:
                 raise ValueError("Too many tries")
@@ -158,13 +154,17 @@ class ReservationAgent:
 
     async def make_reservation(self, application: dict):
         application_without_email = {
-            k: v for k, v in application.items() if k != "applicant_email"
+            k: v
+            for k, v in application.items() if k != "applicant_email"
         }
-        application_form = application_template.format(**application_without_email)
+        application_form = application_template.format(
+            **application_without_email)
         input_messages = [
             {
-                "role": "user",
-                "content": slackbot_message.format(application_form=application_form),
+                "role":
+                "user",
+                "content":
+                slackbot_message.format(application_form=application_form),
             },
         ]
 

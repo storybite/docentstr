@@ -1,14 +1,13 @@
 from dataclasses import dataclass
 import numpy as np
 import os
-from pathlib import Path
+from utils import project_root
 from openai import OpenAI
-from llm import claude_3_7 as claude
-from llm.prompt_templates import search_result_filter
+from .llm import claude_3_7 as claude
+from .prompt_templates import search_result_filter
 import json
 import re
 import streamlit as st
-
 
 print(
     "upstage=============================================>",
@@ -31,16 +30,15 @@ print(
     st.secrets["UPSTAGE_API_KEY"],
 )
 
-upstage = OpenAI(
-    api_key=os.getenv("UPSTAGE_API_KEY"), base_url="https://api.upstage.ai/v1"
-)
+upstage = OpenAI(api_key=os.getenv("UPSTAGE_API_KEY"),
+                 base_url="https://api.upstage.ai/v1")
 
 
 @dataclass(slots=True)
-class DocEmbeddings:
+class DocEmbedding:
     id: str
     doc: str
-    embeddings: list[float] | None = None
+    embedding: list[float] | None = None
 
 
 @dataclass(slots=True)
@@ -48,13 +46,7 @@ class Similarity:
     id: str
     doc: str
     score: float = 0
-    rank: int = None  # 삭제
-    rrf_score: float = 0  # 삭제
-    docs: str = ""  # 삭제
-    collection_name: str = ""  # 추가
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    collection_name: str = ""
 
 
 class Collecton:
@@ -71,53 +63,63 @@ class Collecton:
         if getattr(self, "_initialized", False):
             return
 
-        self.file_path = str(PROJECT_ROOT / "data" / "vector_store" / f"{name}")
-        self.index: dict[str, DocEmbeddings] = {}
+        self.name = name
+        self.file_path = project_root / "data" / "vector_store" / f"{name}"
+        self.index: dict[str, DocEmbedding] = {}
         self._initialized = True
 
     def load(self) -> "Collecton":
-        # Load metadata from JSON file
         with open(f"{self.file_path}_meta.json", "r", encoding="utf-8") as f:
             docs_list = json.load(f)
 
-        # Load embeddings from numpy file
         embeddings_array = np.load(f"{self.file_path}_embeddings.npy")
 
-        # Create DocEmbeddings objects and store in index
         for doc, embedding in zip(docs_list, embeddings_array):
-            self.index[doc["id"]] = DocEmbeddings(
-                id=doc["id"], doc=doc["doc"], embeddings=embedding.tolist()
-            )
+            self.index[doc["id"]] = DocEmbedding(id=doc["id"],
+                                                 doc=doc["doc"],
+                                                 embedding=embedding.tolist())
 
         return self
 
     def add_doc(self, id: str, doc: str):
-        self.index[id] = DocEmbeddings(id=id, doc=doc)
+        self.index[id] = DocEmbedding(id=id, doc=doc)
 
     def build(self):
-        embeddings_list = []
-        docs_list = []
+        doc_embeddings_all = list(self.index.values())
+        doc_embeddings_chunks = [
+            doc_embeddings_all[i:i + 100]
+            for i in range(0, len(doc_embeddings_all), 100)
+        ]
 
-        for doc_embeddings in self.index.values():
-            embeddings = self._get_embeddings(doc_embeddings.doc)
-            doc_embeddings.embeddings = embeddings
-            embeddings_list.append(embeddings)
-            docs_list.append({"id": doc_embeddings.id, "doc": doc_embeddings.doc})
+        doc_all_list = []
+        embedding_all_list = []
+        for doc_embeddings in doc_embeddings_chunks:
+            docs = [doc_embedding.doc for doc_embedding in doc_embeddings]
+            embeddings = self._get_embeddings(docs)
+            for doc_embedding, embedding in zip(doc_embeddings, embeddings):
+                doc_embedding.embedding = embedding
+                doc_all_list.append({
+                    "id": doc_embedding.id,
+                    "doc": doc_embedding.doc
+                })
+                embedding_all_list.append(embedding)
 
-        embeddings_array = np.array(embeddings_list)
-        np.save(f"{self.file_path}_embeddings.npy", embeddings_array)
+        embedding_np_array = np.array(embedding_all_list)
+        np.save(f"{self.file_path}_embeddings.npy", embedding_np_array)
 
         with open(f"{self.file_path}_meta.json", "w", encoding="utf-8") as f:
-            json.dump(docs_list, f, ensure_ascii=False, indent=2)
+            json.dump(doc_all_list, f, ensure_ascii=False, indent=2)
 
-    def query(self, query: str, cutoff=0.4, top_k: int = 60) -> dict[int, Similarity]:
-        query_embeddings = self._get_embeddings(query)
+    def query(self,
+              query: str,
+              cutoff=0.4,
+              top_k: int = 60) -> dict[int, Similarity]:
+        query_embedding = self._get_embeddings(query)[0]
         similarities: list[Similarity] = []
         for doc_embedding in self.index.values():
-            score = np.dot(query_embeddings, doc_embedding.embeddings) / (
-                np.linalg.norm(query_embeddings)
-                * np.linalg.norm(doc_embedding.embeddings)
-            )
+            score = np.dot(query_embedding, doc_embedding.embedding) / (
+                np.linalg.norm(query_embedding) *
+                np.linalg.norm(doc_embedding.embedding))
             if score < cutoff:
                 continue
             similarities.append(
@@ -125,18 +127,18 @@ class Collecton:
                     id=doc_embedding.id,
                     doc=doc_embedding.doc,
                     score=float(score),
-                )
-            )
+                    collection_name=self.name,
+                ))
 
-        similarities = sorted(similarities, key=lambda x: x.score, reverse=True)[:top_k]
+        similarities = sorted(similarities,
+                              key=lambda x: x.score,
+                              reverse=True)[:top_k]
         return similarities
 
-    def _get_embeddings(self, text: str) -> list[float]:
-        return (
-            upstage.embeddings.create(input=text, model="embedding-query")
-            .data[0]
-            .embedding
-        )
+    def _get_embeddings(self, texts: list[str]) -> list[float]:
+        embeddings = upstage.embeddings.create(input=texts,
+                                               model="embedding-query")
+        return [embedding_data.embedding for embedding_data in embeddings.data]
 
     def __len__(self) -> int:
         return len(self.index)
@@ -184,12 +186,16 @@ def filter_results(similarities: list[Similarity], query: str):
     response_json_str = claude.create_response_text(
         messages=[
             {
-                "role": "user",
-                "content": search_result_filter.format(
-                    user_query=query, search_results=search_doc_results
-                ),
+                "role":
+                "user",
+                "content":
+                search_result_filter.format(user_query=query,
+                                            search_results=search_doc_results),
             },
-            {"role": "assistant", "content": "<json>"},
+            {
+                "role": "assistant",
+                "content": "<json>"
+            },
         ],
         stop_sequences=["</json>"],
     )
@@ -203,16 +209,14 @@ def filter_results(similarities: list[Similarity], query: str):
     return filtered_similarities
 
 
-HANJA_RE = re.compile(
-    r"["
-    r"\u4E00-\u9FFF"  # 기본
-    r"\u3400-\u4DBF"  # 확장 A
-    r"\uF900-\uFAFF"  # 호환 한자
-    r"\U00020000-\U0002A6DF"  # 확장 B
-    r"\U0002A700-\U0002B73F"  # 확장 C–D
-    r"\U0002B740-\U0002B81F"  # 확장 E
-    r"]+"
-)
+HANJA_RE = re.compile(r"["
+                      r"\u4E00-\u9FFF"  # 기본
+                      r"\u3400-\u4DBF"  # 확장 A
+                      r"\uF900-\uFAFF"  # 호환 한자
+                      r"\U00020000-\U0002A6DF"  # 확장 B
+                      r"\U0002A700-\U0002B73F"  # 확장 C–D
+                      r"\U0002B740-\U0002B81F"  # 확장 E
+                      r"]+")
 
 
 def clean_text(text: str, replace_with: str = "") -> str:

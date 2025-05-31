@@ -6,7 +6,7 @@ import streamlit as st
 import threading
 from concurrent.futures import Future
 from reservation.reservation_agent import ReservationAgent
-from docent import DocentBot
+from llm import DocentBot
 
 # Streamlit 페이지 설정
 st.set_page_config(page_title="도슨트 봇", page_icon="🎭", layout="centered")
@@ -47,11 +47,6 @@ st.markdown(
             font-size: 18px;
             margin-bottom: 15px;
             color: #333;
-        }
-
-        /* 채팅 메시지 컨테이너의 최대 너비 조정 */
-        .stChatInput {
-            margin-left: -5rem;
         }
 
          .stSpinner {
@@ -238,21 +233,22 @@ def main_page():
                 unsafe_allow_html=True,
             )
 
-            _, col_left, _, col_right, _ = st.columns(
-                [5, 5, 1, 5, 5]
-            )  # 네비게이션 버튼
+            _, col_left, _, col_right, _ = st.columns([5, 5, 1, 5,
+                                                       5])  # 네비게이션 버튼
             with col_left:
                 if st.button("이전", use_container_width=True):
                     print("이전 버튼이 클릭되었습니다.")
                     on_progress(lambda: docent_bot.move(is_next=False))
-                    st.session_state.relic_card = docent_bot.relics.current_to_card()
+                    st.session_state.relic_card = docent_bot.relics.current_to_card(
+                    )
                     st.rerun()
 
             with col_right:
                 if st.button("다음", use_container_width=True):
                     print("다음 버튼이 클릭되었습니다.")
                     on_progress(lambda: docent_bot.move(is_next=True))
-                    st.session_state.relic_card = docent_bot.relics.current_to_card()
+                    st.session_state.relic_card = docent_bot.relics.current_to_card(
+                    )
                     st.rerun()
 
             st.markdown(
@@ -339,8 +335,7 @@ def main_page():
                     # ① 아직 연결 중이라면: 메시지만 띄우고 함수 종료``
                     if not future.done():
                         st.error(
-                            "SSE 서버에 연결 중입니다. 연결이 완료되면 다시 '신청하기'를 눌러 주세요."
-                        )
+                            "SSE 서버에 연결 중입니다. 연결이 완료되면 다시 '신청하기'를 눌러 주세요.")
                         return
 
                     if future.done() and future.exception():
@@ -350,8 +345,8 @@ def main_page():
                     run_async(resv_agent.make_reservation(application))
                     try:
                         st.session_state.future_resv = run_async(
-                            st.session_state.resv_agent.make_reservation(application)
-                        )
+                            st.session_state.resv_agent.make_reservation(
+                                application))
                     except Exception as e:
                         st.error("예약 처리 중 예외 발생: " + str(e))
 
@@ -372,7 +367,8 @@ def main_page():
         if user_message:
             with st.chat_message("user"):
                 st.markdown(user_message)
-            docent_answer = on_progress(lambda: docent_bot.answer(user_message))
+            docent_answer = on_progress(
+                lambda: docent_bot.answer(user_message))
             with st.chat_message("assistant"):
                 st.markdown(docent_answer)
 

@@ -2,6 +2,9 @@ import base64
 from PIL import Image
 from IPython.display import display
 from io import BytesIO
+from pathlib import Path
+
+project_root = Path(__file__).parents[2]
 
 
 def get_base64_data(file_path):
